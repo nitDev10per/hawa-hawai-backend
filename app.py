@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, json, request, jsonify
 from flask_cors import CORS
 import pandas as pd
 import requests
@@ -89,7 +89,52 @@ def fetch_data(lat, lon, target_date, start_year, end_year, parameters, window=5
         raise ValueError("No valid data returned from NASA POWER API.")
     return df
 
+def fetch_params(lat, lon, target_date, start_year, end_year, parameters, window=5):
+    try:
+        target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Invalid date format. Expected YYYY-MM-DD")
 
+    if window:
+        date_start = target_dt - timedelta(days=window)
+        date_end = target_dt + timedelta(days=window)
+    else:
+        date_start = target_dt
+        date_end = target_dt
+
+    month_start, day_start = date_start.month, date_start.day
+    month_end, day_end = date_end.month, date_end.day
+
+    df = {
+        "start_year": start_year,
+        "end_year": end_year,
+        "month_start": month_start,
+        "day_start": day_start,
+        "month_end": month_end,
+        "day_end": day_end,
+        "parameters": parameters,
+        "lat": lat,
+        "lon": lon
+    }
+    return df
+
+
+def get_request_params():
+    validate_request_params('lat', 'long', 'date')
+    lat = float(request.args['lat'])
+    lon = float(request.args['long'])
+    target_date = request.args['date']
+    start_year = int(request.args.get('start_year', 2000))
+    end_year = int(request.args.get('end_year', 2025))
+    return lat, lon, target_date, start_year, end_year
+
+def end_response(categories_fun, params):
+    validate_request_params('api_result')
+    df_json = json.loads(request.args['api_result'])
+    df = pd.DataFrame(df_json)
+    df['Category'] = df[params].apply(categories_fun)
+    probs = df['Category'].value_counts(normalize=True) * 100
+    return jsonify(probs.to_dict())
 # ---------------------------------------------------
 # Categorization Functions
 # ---------------------------------------------------
@@ -174,35 +219,32 @@ def validate_request_params(*params):
 @app.route('/api/aod')
 def api_aod():
     try:
-        validate_request_params('lat', 'long', 'date')
-        lat = float(request.args['lat'])
-        lon = float(request.args['long'])
-        target_date = request.args['date']
-        start_year = int(request.args.get('start_year', 2000))
-        end_year = int(request.args.get('end_year', 2025))
-
-        df = fetch_data(lat, lon, target_date, start_year, end_year, ['AOD_55_ADJ'])
-        df['Category'] = df['AOD_55_ADJ'].apply(categorize_aod)
-        probs = df['Category'].value_counts(normalize=True) * 100
-        return jsonify(probs.to_dict())
+        lat, lon, target_date, start_year, end_year = get_request_params()
+        df = fetch_params(lat, lon, target_date, start_year, end_year, ['AOD_55_ADJ'])
+        return jsonify(df)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+@app.route('/api/aod_after_res')
+def api_aod_after_res():
+    try:
+        return end_response(categorize_aod, 'AOD_55_ADJ')
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 @app.route('/api/cloud')
 def api_cloud():
     try:
-        validate_request_params('lat', 'long', 'date')
-        lat = float(request.args['lat'])
-        lon = float(request.args['long'])
-        target_date = request.args['date']
-        start_year = int(request.args.get('start_year', 2000))
-        end_year = int(request.args.get('end_year', 2025))
+        lat, lon, target_date, start_year, end_year = get_request_params()
+        df = fetch_params(lat, lon, target_date, start_year, end_year, ['CLOUD_AMT'])
+        return jsonify(df)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
-        df = fetch_data(lat, lon, target_date, start_year, end_year, ['CLOUD_AMT'])
-        df['Category'] = df['CLOUD_AMT'].apply(categorize_cloud)
-        probs = df['Category'].value_counts(normalize=True) * 100
-        return jsonify(probs.to_dict())
+@app.route('/api/cloud_after_res')
+def api_cloud_after_res():
+    try:
+        return end_response(categorize_cloud, 'CLOUD_AMT')
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
@@ -210,53 +252,49 @@ def api_cloud():
 @app.route('/api/temp')
 def api_temp():
     try:
-        validate_request_params('lat', 'long', 'date')
-        lat = float(request.args['lat'])
-        lon = float(request.args['long'])
-        target_date = request.args['date']
-        start_year = int(request.args.get('start_year', 2000))
-        end_year = int(request.args.get('end_year', 2025))
-
-        df = fetch_data(lat, lon, target_date, start_year, end_year, ['T2M'])
-        df['Category'] = df['T2M'].apply(categorize_temp)
-        probs = df['Category'].value_counts(normalize=True) * 100
-        return jsonify(probs.to_dict())
+        lat, lon, target_date, start_year, end_year = get_request_params()
+        df = fetch_params(lat, lon, target_date, start_year, end_year, ['T2M'])
+        return jsonify(df)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+@app.route('/api/temp_after_res')
+def api_temp_after_res():
+    try:
+        return end_response(categorize_temp, 'T2M')
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 @app.route('/api/snow')
 def api_snow():
     try:
-        validate_request_params('lat', 'long', 'date')
-        lat = float(request.args['lat'])
-        lon = float(request.args['long'])
-        target_date = request.args['date']
-        start_year = int(request.args.get('start_year', 2000))
-        end_year = int(request.args.get('end_year', 2025))
-
-        df = fetch_data(lat, lon, target_date, start_year, end_year, ['SNODP'])
-        df['Category'] = df['SNODP'].apply(categorize_snow)
-        probs = df['Category'].value_counts(normalize=True) * 100
-        return jsonify(probs.to_dict())
+        lat, lon, target_date, start_year, end_year = get_request_params()
+        df = fetch_params(lat, lon, target_date, start_year, end_year, ['SNODP'])
+        return jsonify(df)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
 
+@app.route('/api/snow_after_res')
+def api_snow_after_res():
+    try:
+        return end_response(categorize_snow, 'SNODP')
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
 @app.route('/api/rain')
 def api_rain():
     try:
-        validate_request_params('lat', 'long', 'date')
-        lat = float(request.args['lat'])
-        lon = float(request.args['long'])
-        target_date = request.args['date']
-        start_year = int(request.args.get('start_year', 2000))
-        end_year = int(request.args.get('end_year', 2025))
+        lat, lon, target_date, start_year, end_year = get_request_params()
+        df = fetch_params(lat, lon, target_date, start_year, end_year, ['PRECTOTCORR'])
+        return jsonify(df)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
-        df = fetch_data(lat, lon, target_date, start_year, end_year, ['PRECTOTCORR'])
-        df['Category'] = df['PRECTOTCORR'].apply(categorize_rainfall)
-        probs = df['Category'].value_counts(normalize=True) * 100
-        return jsonify(probs.to_dict())
+@app.route('/api/rain_after_res')
+def api_rain_after_res():
+    try:
+        return end_response(categorize_rainfall, 'PRECTOTCORR')
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
@@ -264,19 +302,19 @@ def api_rain():
 @app.route('/api/wind')
 def api_wind():
     try:
-        validate_request_params('lat', 'long', 'date')
-        lat = float(request.args['lat'])
-        lon = float(request.args['long'])
-        target_date = request.args['date']
-        start_year = int(request.args.get('start_year', 2000))
-        end_year = int(request.args.get('end_year', 2025))
-
-        df = fetch_data(lat, lon, target_date, start_year, end_year, ['WS10M'])
-        df['Category'] = df['WS10M'].apply(categorize_wind)
-        probs = df['Category'].value_counts(normalize=True) * 100
-        return jsonify(probs.to_dict())
+        lat, lon, target_date, start_year, end_year = get_request_params()
+        df = fetch_params(lat, lon, target_date, start_year, end_year, ['WS10M'])
+        return jsonify(df)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+@app.route('/api/wind_after_res')
+def api_wind_after_res():
+    try:
+        return end_response(categorize_wind, 'WS10M')
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
 
 
 @app.route('/api/timeseries')
