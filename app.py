@@ -129,11 +129,27 @@ def get_request_params():
     return lat, lon, target_date, start_year, end_year
 
 def end_response(categories_fun, params):
-    validate_request_params('api_result')
-    df_json = json.loads(request.args['api_result'])
+    # Get JSON data from POST body
+    data = request.get_json()
+    if not data or 'api_result' not in data:
+        return jsonify({"error": "Missing 'api_result' in request body"}), 400
+
+    # Extract and parse data
+    df_json = data['api_result']
+    if isinstance(df_json, str):
+        # Handle case where it's a JSON string
+        df_json = json.loads(df_json)
+
+    # Convert to DataFrame
     df = pd.DataFrame(df_json)
+
+    # Apply category function
     df['Category'] = df[params].apply(categories_fun)
+
+    # Calculate probabilities
     probs = df['Category'].value_counts(normalize=True) * 100
+
+    # Return result as JSON
     return jsonify(probs.to_dict())
 # ---------------------------------------------------
 # Categorization Functions
@@ -225,7 +241,7 @@ def api_aod():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-@app.route('/api/aod_after_res')
+@app.route('/api/aod_after_res', methods=['POST'])
 def api_aod_after_res():
     try:
         return end_response(categorize_aod, 'AOD_55_ADJ')
@@ -241,7 +257,7 @@ def api_cloud():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-@app.route('/api/cloud_after_res')
+@app.route('/api/cloud_after_res', methods=['POST'])
 def api_cloud_after_res():
     try:
         return end_response(categorize_cloud, 'CLOUD_AMT')
@@ -258,7 +274,7 @@ def api_temp():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-@app.route('/api/temp_after_res')
+@app.route('/api/temp_after_res', methods=['POST'])
 def api_temp_after_res():
     try:
         return end_response(categorize_temp, 'T2M')
@@ -275,7 +291,7 @@ def api_snow():
         return jsonify({"error": str(e)}), 400
 
 
-@app.route('/api/snow_after_res')
+@app.route('/api/snow_after_res', methods=['POST'])
 def api_snow_after_res():
     try:
         return end_response(categorize_snow, 'SNODP')
@@ -291,7 +307,7 @@ def api_rain():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-@app.route('/api/rain_after_res')
+@app.route('/api/rain_after_res', methods=['POST'])
 def api_rain_after_res():
     try:
         return end_response(categorize_rainfall, 'PRECTOTCORR')
@@ -308,7 +324,7 @@ def api_wind():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-@app.route('/api/wind_after_res')
+@app.route('/api/wind_after_res', methods=['POST'])
 def api_wind_after_res():
     try:
         return end_response(categorize_wind, 'WS10M')
